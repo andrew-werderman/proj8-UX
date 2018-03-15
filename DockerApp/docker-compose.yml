@@ -1,0 +1,39 @@
+version: '3'  # version of compose format 
+
+services:
+  website:
+    image: php:apache 
+    volumes:
+      - ./website:/var/www/html 
+    ports:
+      - 5000:80  # host:container
+    depends_on:
+      - api  # website is not going to work unless api is running
+
+  api:
+    build: ./brevet_api
+    volumes:
+      - ./brevet_api:/usr/src/app 
+    ports:
+      - 5001:80  # host:container
+    depends_on:
+      - mongo
+
+  brevet:
+    build: ./brevet 
+    volumes:
+      - ./brevet:/app
+    ports:
+      - 5002:5000  # host:container
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo:latest
+    volumes: 
+      - 'mongo:/data/db'
+    ports: 
+      - 27017:27017
+
+volumes:
+  mongo:
