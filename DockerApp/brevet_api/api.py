@@ -1,20 +1,23 @@
 # Brevet RESTful API
 # Author: Andrew Werderman
 
-import arrow
 import flask
-import base64
-from flask import (
-	Flask, redirect, url_for, request, render_template, Response, jsonify 
-	)
-from flask_restful import Resource, Api, abort
-from pymongo import MongoClient
 from itsdangerous import (TimedJSONWebSignatureSerializer
 							as Serializer, BadSignature,
 							SignatureExpired)
+from flask import (
+	Flask, redirect, url_for, request, render_template, Response, jsonify 
+	)
 from passlib.apps import custom_app_context as pwd_context
+from flask_restful import Resource, Api, abort
 from basicauth import decode as authDecode
+from flask_login import LoginManager, login_required, login_user
+from flask_wtf import CSRFProtect
+from pymongo import MongoClient
 from functools import wraps
+import base64
+import arrow
+
 
 # Instantiate the app
 app = Flask(__name__)
@@ -25,10 +28,69 @@ app.config['SECRET_KEY'] = 'the quick brown fox jumps over the lazy dog'
 client = MongoClient('mongodb://mongo:27017/')
 brevetdb = client['brevetdb'] 
 usersdb = client['usersdb']
+USERcollection = usersdb['UserInfo']
+
+# Initialize Login Manager
+login_manager = LoginManager()
+login_manager.init_app(app)
+csrf = CSRFProtect(app)
+
 
 class Home(Resource):
 	def get(self):
 		return ''
+
+class User():
+	def __init__(self, username=None, password=None):
+		self.username = username
+		self.password = password
+
+	def register_user(self):
+			# Handle username is already in use. (True: return appropriate message)
+			if (USERcollection.find_one({'username': self.username})):
+				return False
+			hVal = pwd_context.encrypt(self.password)
+			collection.insert_one({'username': self.username, 'password': hVal})
+			return True
+
+	@staticmethod
+	def is_authenticated(username, password):
+		user = USERcollection.find_one({'username': username})
+		if user:
+			hashVal = user['password']
+			return pwd_context.verify(password, hashVal)
+		return False
+
+	@staticmethod
+	def is_active():
+		'''
+		this is to check if the user has activated their account
+		not been suspended, or any condition the application has 
+		for rejecting the account. In our case we'll just always 
+		return true.
+		'''
+		return True
+
+	@staticmethod
+	def is_anonymous():
+		'''
+		Not going to worry about anonymous/guest users
+		'''
+		return False
+
+	@staticmethod
+	def get_id(self, username):
+		'''
+		must return unicode that uniquely identifies the user
+		and can be used to load the user from user_loader callback. 
+		MUST BE UNICODE. 
+		'''
+		user = USERcollection.find_one({'username': username})
+		if user:
+			user_id = user['_id']
+			return user_id
+
+		return None
 
 
 class Register(Resource):
@@ -52,23 +114,49 @@ class Register(Resource):
 		username = request.form.get('username')
 		password = request.form.get('password')
 
+		# Handle invalid inputs
+		if ((username == None) or (username == '')) or ((password == None) or (password == '')):
+			return {'Error': 'Please provide a username and password.'}, 400
+
 		# Handle username is already in use. (True: return appropriate message)
 		if (self.collection.find_one({'username': username})):
 			# Bad Request is returned
 			return {'Error': '{} already in use.'.format(username)}, 400
 
+		new_user = User(username, password).register_user()
+		if new_user:
+			# Format response
+			info = {'location': str(new_user.get_id()), 
+					'username': username, 
+					'date_added': arrow.now().for_json()}
+			response = flask.jsonify(info)
+			response.status_code = 201
+			return response
+
+		return {'Error': 'Unsuccessful'}, 400
+
+
+class Login(Resource):
+	def __init__(self):
+		self.collection = usersdb['UserInfo']
+
+	def post(self):
+		username = request.form.get('username')
+		password = request.form.get('password')
+
 		# Handle invalid inputs
 		if ((username == None) or (username == '')) or ((password == None) or (password == '')):
 			return {'Error': 'Please provide a username and password.'}, 400
 
-		# Hash password
-		hVal = pwd_context.encrypt(password)
+		# Handle username is already in use. (True: return appropriate message)
+		if not (self.collection.find_one({'username': username})):
+			# Bad Request is returned
+			return {'Error': '{} is not a registered username.'.format(username)}, 400
 
-		# Insert username, hashed password into collection
-		self.collection.insert_one({'username': username, 'password': hVal})
-
-		# Get user object
-		user = self.collection.find_one({'username': username})
+		if User.is_authenticated(username, password):
+			login_user(User(username, password), remember=True)
+			flask.flash('Logged in successfully.')
+			return flask.redirect(url_for('index'))
 
 		# Format response
 		info = {'location': str(user['_id']), 'username': username, 'date_added': arrow.now().for_json()}
@@ -77,114 +165,19 @@ class Register(Resource):
 		return response
 
 
-class Token(Resource):
-	def __init__(self):
-		self.collection = usersdb['UserInfo']
-
+class Logout(Resource):
 	def get(self):
-		'''
-		Function executed on a 'GET /api/token' request. Upon request,
-		this function will:
-		  1. Authenticate the user with a verify_password() call.
-		  2. Set an expiration (in seconds) on the token.
-		  3. Return a JSON object of the requested token, and 
-		  duration of the token.
-		
-		On failure, an error message with status code 401 (unauthorized) is returned.
-
-		USE: curl -u "<username>:<password>" localhost:5001/api/token
-		'''
-		message = request.headers.get('Authorization')
-
-		try:
-			username, password = authDecode(message)
-		except AttributeError:
-			# If no credentials given
-			return {'Error': 'Unauthorized'}, 401
-
-		# Handle case where username not in db
-		if not (self.collection.find_one({'username': username})):
-			return {'Error': 'User does not exist.'}, 401
-
-		# Handle incorrect password for user
-		if not (Token.verify_password(self, username, password)):
-			return {'Error': 'Unauthorized'}, 401
-
-		# Set return information
-		duration = 600  # 600 seconds -- 10 minutes
-		token = Token.generate_auth_token(self, username, duration)
-		info = {'token': token.decode('utf-8'), 'duration': duration}
-
-		response = flask.jsonify(info)
-		response.status_code = 200
-		return response 
-
-	def verify_password(self, username, password):
-		'''
-		inputs: username and password
-		output: True for correct password, else False
-
-		Check inputted password against saved hashed password, and 
-		return True or False depending on whether the password is correct or not.
-		'''
-		user = self.collection.find_one({'username': username})
-		hashVal = user['password']
-		return pwd_context.verify(password, hashVal)
-
-	def generate_auth_token(self, username, expiration=600):
-		'''
-		inputs: username and expiration (the approx. number of seconds before 
-				the expiration of the token)
-		output: authentication token
-		'''
-		s = Serializer(app.config['SECRET_KEY'], expires_in=expiration)
-		user = self.collection.find_one({'username': username})
-		return s.dumps({'id': str(user['_id'])})
+		logout_user()
 
 
-def authenticate(func):
-	'''
-	Wrapper to make sure each request is an authenticated one
-	'''
-	@wraps(func)
-	def wrapper(*args, **kwargs):
-		message = request.headers.get('Authorization')
-		try:
-			token,_ = authDecode(message)
-		except AttributeError:	
-			# If no credentials given
-			return {'Error': 'unauthorized'}, 401
-
-		if verify_auth_token(token):
-			return func(*args, **kwargs)
-
-		abort(401)
-	return wrapper
-
-
-def verify_auth_token(token):
-	'''
-	input: token string
-	output: True if token is valid, else false
-	'''
-	s = Serializer(app.config['SECRET_KEY'])
-	try:
-		data = s.loads(token)
-	except SignatureExpired:
-		return False    # valid token, but expired
-	except BadSignature:
-		return False    # invalid token
-	return True
-
-
-# Can only be accessed with the correct token.
+# Can only be accessed when logged in.
 class ListBrevet(Resource):
 	# All functions in this class must come from an authenticated user
-	method_decorators = [authenticate]
-
+	@login_required
 	def __init__(self):
 		self.collection = brevetdb['brevet'] 
 
+	@login_required
 	def get(self, items='listAll', resultFormat='json'):
 		'''
 		  Input:
@@ -234,6 +227,7 @@ class ListBrevet(Resource):
 
 		return jsonify(result)
 
+	@login_required
 	def formatResponse(brevet, resultFormat, *args):
 		'''
 		  Input: 
@@ -268,17 +262,20 @@ class ListBrevet(Resource):
 		return output[resultFormat]
 
 
+@login_manager.user_loader
+def load_user(username):
+	return User.get_id(username)
+
+
 # Create routes
 api.add_resource(Home, '/')
-api.add_resource(Token, '/api/token')
+api.add_resource(Login, '/api/login')
+api.add_resource(Logout, '/api/logout')
 api.add_resource(Register, '/api/register')
 api.add_resource(ListBrevet, '/<items>', '/<items>/<resultFormat>')
 
 # Run the application
 if __name__ == '__main__':
-    app.run(
-    	host='0.0.0.0', 
-    	port=80, 
-    	debug=True,
-    	extra_files = './templates/response.html')
+	app.run(host='0.0.0.0', port=80, debug=True)
+
 

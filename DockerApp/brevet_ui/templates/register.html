@@ -1,0 +1,32 @@
+<html>
+	<head>
+		<title> Registeration Page </title>
+	</head>
+	<body>
+		<h1> Registration Page </h1>
+		<form method='POST' action="{{ url_for('register') }}">
+			{{ form.csrf_token }}
+			{{ form.username.label }}
+			{{ form.username }}
+			<ul>
+				{% for msg in form.username.errors %}
+					<li> {{ error }} </li>
+				{% endfor %}
+			</ul>
+			{{ form.password.label }}
+			{{ form.password }}
+			<ul>
+				{% for msg in form.password.errors %}
+					<li> {{ error }} </li>
+				{% endfor %}
+			</ul>
+			<input type='submit' value='Submit'>
+		</form>
+		<br>
+		<br>
+		<p> If you have already registered, please login here: </p>
+		<form method="GET" action="{{ url_for('login') }}">
+			<input type="submit" value="Login" name="Login">
+		</form>
+	</body>
+</html>

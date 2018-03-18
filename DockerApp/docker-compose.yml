@@ -1,14 +1,14 @@
 version: '3'  # version of compose format 
 
 services:
-  website:
-    image: php:apache 
+  auth:
+    build: ./brevet_ui
     volumes:
-      - ./website:/var/www/html 
+      - ./brevet_ui:/auth 
     ports:
-      - 5000:80  # host:container
+      - 5000:5000  # host:container
     depends_on:
-      - api  # website is not going to work unless api is running
+      - mongo
 
   api:
     build: ./brevet_api

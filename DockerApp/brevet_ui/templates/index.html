@@ -1,4 +1,3 @@
-
 <html>
     <head>
         <title>CIS 322 REST-api: Brevet Controle List</title>
@@ -27,26 +26,26 @@
             <label>Limit</label>
                 <input type='number' name='limit' id='limit' min='1' max='20' step='1'>
 
-            <input type="submit" value="Submit">
+            <button type="button" value="Display" id='display'/>Display</button>
         </form>
 
         <h2>Requested Information</h2>
 
-        <?php 
-            $list = $_GET['control_list'];
-            $format = $_GET['format'];
-            $limit = $_GET['limit'];
-            $output = file_get_contents("http://api/$list/$format?top=$limit");
-            
-            if ($format == 'json'){
-                echo $output;
-            } else{
-                foreach (str_getcsv($output, "\n") as $line){
-                    echo "<p> $line </p>";
-                }
-                
-            }
-        ?>
-
+        <script type="text/javascript">
+            $('#display').click(function(){
+                console.log('Display button clicked');
+                var list = $('#control_list').val();
+                var format = $('#format').val();
+                var limit = $('#limit').val();
+                if (limit == null) | (limit == ''){
+                    var url = "/" + list + "/" + format;
+                } else {
+                    var url = "/" + list + "/" + format + "?top=" + limit;
+                } 
+                $.get(url, function(data){
+                    console.log(data.result);
+                });
+            });
+        </script>
     </body>
 </html>

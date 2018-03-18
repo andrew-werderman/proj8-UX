@@ -1,0 +1,36 @@
+<html>
+	<head>
+		<title> Login Page </title>
+	</head>
+	<body>
+		<h1> Login Page </h1>
+		<form method="POST" action="{{ url_for('login') }}">
+			{{ form.csrf_token }}
+			{{ form.username.label }}
+			{{ form.username }}
+			<ul>
+				{% for msg in form.username.errors %}
+					<li> {{ error }} </li>
+				{% endfor %}
+			</ul>
+			{{ form.password.label }}
+			{{ form.password }}
+			<ul>
+				{% for msg in form.password.errors %}
+					<li> {{ error }} </li>
+				{% endfor %}
+			</ul>
+			<input type="submit" value="Submit">
+			<br>
+			<br>
+			{{ form.remember.label }}
+			{{ form.remember }}
+		</form>
+		<br>
+		<br>
+		<p> You must register before logging in. If you have not registered, please click the register button.</p>
+		<form method="GET" action="{{ url_for('register') }}">
+			<input type="submit" value="Register" name="register">
+		</form>
+	</body>
+</html>
