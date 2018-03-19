@@ -1,4 +1,4 @@
-# Project 8: User interface for uthenticated brevet time calculator service
+# Project 8: User interface for authenticated brevet time calculator service
 
 In addition to creating UI for basic authentication and token
 generation, I have added three additional functionalities in my UI: (a) remember me, (b) logout, 
