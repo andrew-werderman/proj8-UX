@@ -10,14 +10,14 @@
 			{{ form.username }}
 			<ul>
 				{% for msg in form.username.errors %}
-					<li> {{ error }} </li>
+					<li> {{ msg }} </li>
 				{% endfor %}
 			</ul>
 			{{ form.password.label }}
 			{{ form.password }}
 			<ul>
 				{% for msg in form.password.errors %}
-					<li> {{ error }} </li>
+					<li> {{ msg }} </li>
 				{% endfor %}
 			</ul>
 			<input type='submit' value='Submit'>

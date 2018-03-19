@@ -29,7 +29,11 @@
             <button type="button" value="Display" id='display'/>Display</button>
         </form>
 
+        <button type="button" value="Logout" id='logout'/>Logout</button>        
+
         <h2>Requested Information</h2>
+
+        <p id="output"> </p>
 
         <script type="text/javascript">
             $('#display').click(function(){
@@ -37,14 +41,29 @@
                 var list = $('#control_list').val();
                 var format = $('#format').val();
                 var limit = $('#limit').val();
-                if (limit == null) | (limit == ''){
-                    var url = "/" + list + "/" + format;
+                if ((limit == null)||(limit == '')){
+                    var url = "/_" + list + "/" + format;
                 } else {
-                    var url = "/" + list + "/" + format + "?top=" + limit;
+                    var url = "/_" + list + "/" + format + "?top=" + limit;
                 } 
+                $('#output').text(' ');
+                console.log("url: " + url);
                 $.get(url, function(data){
-                    console.log(data.result);
+                    var result = data.result;
+                    if (format == 'json'){
+                        $('#output').append(JSON.stringify(result[0]));
+                        for (var i = 1; i < result.length; i++){
+                            $('#output').append(", <br>" + JSON.stringify(result[i]));
+                        }
+                    } else{
+                        var out = JSON.stringify(result)
+                        $('#output').append(out);
+                    }
                 });
+            });
+
+            $('#logout').click(function(){
+                window.location.href = '/logout';
             });
         </script>
     </body>

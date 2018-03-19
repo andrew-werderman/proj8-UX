@@ -28,12 +28,10 @@ app.config['SECRET_KEY'] = 'the quick brown fox jumps over the lazy dog'
 client = MongoClient('mongodb://mongo:27017/')
 brevetdb = client['brevetdb'] 
 usersdb = client['usersdb']
-USERcollection = usersdb['UserInfo']
 
 # Initialize Login Manager
 login_manager = LoginManager()
 login_manager.init_app(app)
-csrf = CSRFProtect(app)
 
 
 class Home(Resource):
@@ -41,56 +39,25 @@ class Home(Resource):
 		return ''
 
 class User():
-	def __init__(self, username=None, password=None):
-		self.username = username
-		self.password = password
-
-	def register_user(self):
-			# Handle username is already in use. (True: return appropriate message)
-			if (USERcollection.find_one({'username': self.username})):
-				return False
-			hVal = pwd_context.encrypt(self.password)
-			collection.insert_one({'username': self.username, 'password': hVal})
-			return True
-
-	@staticmethod
-	def is_authenticated(username, password):
-		user = USERcollection.find_one({'username': username})
-		if user:
-			hashVal = user['password']
-			return pwd_context.verify(password, hashVal)
-		return False
-
-	@staticmethod
-	def is_active():
-		'''
-		this is to check if the user has activated their account
-		not been suspended, or any condition the application has 
-		for rejecting the account. In our case we'll just always 
-		return true.
-		'''
+	def __init__(self, user_id):
+		self.user_id = user_id
+		
+	def is_authenticated(self):
 		return True
 
-	@staticmethod
-	def is_anonymous():
-		'''
-		Not going to worry about anonymous/guest users
-		'''
+	def is_active(self):
+		return True
+
+	def is_anonymous(self):
 		return False
 
-	@staticmethod
-	def get_id(self, username):
-		'''
-		must return unicode that uniquely identifies the user
-		and can be used to load the user from user_loader callback. 
-		MUST BE UNICODE. 
-		'''
-		user = USERcollection.find_one({'username': username})
-		if user:
-			user_id = user['_id']
-			return user_id
+	def get_id(self):
+		return str(self.user_id)
 
-		return None
+
+@login_manager.user_loader
+def load_user(user_id):
+	return User(user_id)
 
 
 class Register(Resource):
@@ -123,17 +90,16 @@ class Register(Resource):
 			# Bad Request is returned
 			return {'Error': '{} already in use.'.format(username)}, 400
 
-		new_user = User(username, password).register_user()
-		if new_user:
-			# Format response
-			info = {'location': str(new_user.get_id()), 
-					'username': username, 
-					'date_added': arrow.now().for_json()}
-			response = flask.jsonify(info)
-			response.status_code = 201
-			return response
-
-		return {'Error': 'Unsuccessful'}, 400
+		hVal = pwd_context.encrypt(password)
+		self.collection.insert_one({'username': username, 'password': hVal})
+		new_user = self.collection.find_one({'username': username})
+		# Format response
+		info = {'location': str(new_user['_id']), 
+				'username': username, 
+				'date_added': arrow.now().for_json()}
+		response = flask.jsonify(info)
+		response.status_code = 201
+		return response
 
 
 class Login(Resource):
@@ -141,6 +107,9 @@ class Login(Resource):
 		self.collection = usersdb['UserInfo']
 
 	def post(self):
+		'''
+		USE: curl -d "username=<username>&password=<password>" localhost:5001/api/login
+		'''
 		username = request.form.get('username')
 		password = request.form.get('password')
 
@@ -148,32 +117,33 @@ class Login(Resource):
 		if ((username == None) or (username == '')) or ((password == None) or (password == '')):
 			return {'Error': 'Please provide a username and password.'}, 400
 
+		user = self.collection.find_one({'username': username})
+
 		# Handle username is already in use. (True: return appropriate message)
-		if not (self.collection.find_one({'username': username})):
+		if not user:
 			# Bad Request is returned
 			return {'Error': '{} is not a registered username.'.format(username)}, 400
 
-		if User.is_authenticated(username, password):
-			login_user(User(username, password), remember=True)
-			flask.flash('Logged in successfully.')
-			return flask.redirect(url_for('index'))
+		hashVal = user['password']
 
-		# Format response
-		info = {'location': str(user['_id']), 'username': username, 'date_added': arrow.now().for_json()}
-		response = flask.jsonify(info)
-		response.status_code = 201
-		return response
+		if pwd_context.verify(password, hashVal):
+			obj = User(user['_id'])
+			login_user(obj, remember=True)
+			return 'User successfully logged in.', 200
+
+		return 'Unauthorized.', 401
 
 
 class Logout(Resource):
+	@login_required
 	def get(self):
 		logout_user()
+		return 'user successfully logged out.', 200
 
 
 # Can only be accessed when logged in.
 class ListBrevet(Resource):
 	# All functions in this class must come from an authenticated user
-	@login_required
 	def __init__(self):
 		self.collection = brevetdb['brevet'] 
 
@@ -227,7 +197,6 @@ class ListBrevet(Resource):
 
 		return jsonify(result)
 
-	@login_required
 	def formatResponse(brevet, resultFormat, *args):
 		'''
 		  Input: 
@@ -260,11 +229,6 @@ class ListBrevet(Resource):
 
 		output = {'json': json, 'csv': csv}
 		return output[resultFormat]
-
-
-@login_manager.user_loader
-def load_user(username):
-	return User.get_id(username)
 
 
 # Create routes
