@@ -126,7 +126,10 @@ def register():
 		if not is_taken(username):
 			hVal = pwd_context.encrypt(password)
 			USER_COLLECTION.insert_one({'username': username, 'password': hVal})
-			return redirect(url_for('login'))
+			new_user = USER_COLLECTION.find_one({'username': username})
+			user_obj = User(new_user['_id'])
+			login_user(user_obj, remember=True)
+			return redirect(url_for('index'))
 	return render_template('register.html', form=form)
 
 
@@ -144,7 +147,7 @@ def login():
 			if is_valid_password(username, password):
 				obj = User(user['_id'])
 				login_user(obj, remember=True)
-				return flask.redirect(url_for('index'))
+				return redirect(url_for('index'))
 			app.logger.debug("invalid password")
 
 	return render_template('login.html', form=form)
